@@ -7,4 +7,5 @@ with
 - support ajp backend
 - dynamic name resolving (jdomain)
 
-
+The Dockerfile was derived from https://gist.github.com/hermanbanken/96f0ff298c162a522ddbba44cad31081.
+Thank you hermanbanken.
