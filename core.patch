@@ -1,0 +1,18 @@
+--- a/src/http/ngx_http_core_module.c	Sun Aug 16 10:51:34 2015 +0300
++++ b/src/http/ngx_http_core_module.c	Sun Aug 16 09:00:29 2015 +0000
+@@ -2049,8 +2049,13 @@
+     ngx_str_t   auth, encoded;
+     ngx_uint_t  len;
+
+-    if (r->headers_in.user.len == 0 && r->headers_in.user.data != NULL) {
+-        return NGX_DECLINED;
++    if (r->headers_in.user.data != NULL) {
++        if (r->headers_in.user.len == 0) {
++            return NGX_DECLINED;
++        } else {
++            /* headers_in.user is already set, don't parse again. */
++            return NGX_OK;
++        }
+     }
+
+     if (r->headers_in.authorization == NULL) {

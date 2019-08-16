@@ -1,0 +1,237 @@
+--- original/nginx-http-shibboleth-2.0.1/ngx_http_shibboleth_module.c	2017-04-06 09:38:19.000000000 +0900
++++ SOURCE/nginx-http-shibboleth-2.0.1/ngx_http_shibboleth_module.c	2018-09-24 14:16:33.000000000 +0900
+@@ -29,6 +29,7 @@
+     ngx_str_t                               name;
+     ngx_uint_t                              offset;
+     ngx_http_shib_request_set_header_pt     handler;
++    ngx_uint_t                              multi;
+ } ngx_http_shib_request_set_header_t;
+ 
+ 
+@@ -38,6 +39,7 @@
+     ngx_str_t                               key;
+     ngx_http_shib_request_set_header_pt     handler;
+     ngx_uint_t                              offset;
++    ngx_uint_t                              multi;
+ };
+ 
+ 
+@@ -107,61 +109,65 @@
+ 
+     { ngx_string("Server"),
+                  offsetof(ngx_http_headers_out_t, server),
+-                 ngx_http_set_builtin_header },
++                 ngx_http_set_builtin_header, 0},
+ 
+     { ngx_string("Date"),
+                  offsetof(ngx_http_headers_out_t, date),
+-                 ngx_http_set_builtin_header },
++                 ngx_http_set_builtin_header, 0 },
+ 
+     { ngx_string("Content-Encoding"),
+                  offsetof(ngx_http_headers_out_t, content_encoding),
+-                 NULL },
++                 NULL, 0 },
+ 
+     { ngx_string("Location"),
+                  offsetof(ngx_http_headers_out_t, location),
+-                 ngx_http_set_location_header },
++                 ngx_http_set_location_header, 0 },
+ 
+     { ngx_string("Refresh"),
+                  offsetof(ngx_http_headers_out_t, refresh),
+-                 ngx_http_set_builtin_header },
++                 ngx_http_set_builtin_header, 0 },
+ 
+     { ngx_string("Last-Modified"),
+                  offsetof(ngx_http_headers_out_t, last_modified),
+-                 ngx_http_set_last_modified_header },
++                 ngx_http_set_last_modified_header, 0 },
+ 
+     { ngx_string("Content-Range"),
+                  offsetof(ngx_http_headers_out_t, content_range),
+-                 NULL },
++                 NULL, 0 },
+ 
+     { ngx_string("Accept-Ranges"),
+                  offsetof(ngx_http_headers_out_t, accept_ranges),
+-                 ngx_http_set_builtin_header },
++                 ngx_http_set_builtin_header, 0 },
+ 
+     { ngx_string("WWW-Authenticate"),
+                  offsetof(ngx_http_headers_out_t, www_authenticate),
+-                 ngx_http_set_builtin_header },
++                 ngx_http_set_builtin_header, 0 },
+ 
+     { ngx_string("Expires"),
+                  offsetof(ngx_http_headers_out_t, expires),
+-                 ngx_http_set_builtin_header },
++                 ngx_http_set_builtin_header, 0 },
+ 
+     { ngx_string("ETag"),
+                  offsetof(ngx_http_headers_out_t, etag),
+-                 ngx_http_set_builtin_header },
++                 ngx_http_set_builtin_header, 0 },
+ 
+     { ngx_string("Content-Length"),
+                  offsetof(ngx_http_headers_out_t, content_length),
+-                 NULL },
++                 NULL, 0 },
+ 
+     { ngx_string("Content-Type"),
+                  offsetof(ngx_http_headers_out_t, content_type),
+-                 NULL },
++                 NULL, 0 },
+ 
+     { ngx_string("Cache-Control"),
+                  offsetof(ngx_http_headers_out_t, cache_control),
+-                 ngx_http_set_builtin_multi_header },
++                 ngx_http_set_builtin_multi_header, 0 },
+ 
+-    { ngx_null_string, 0, ngx_http_set_header }
++    { ngx_string("Set-Cookie"),
++                 0,
++                 ngx_http_set_header, 1 },
++
++    { ngx_null_string, 0, ngx_http_set_header, 0 }
+ };
+ 
+ 
+@@ -234,6 +240,7 @@
+     ngx_http_post_subrequest_t    *ps;
+     ngx_http_auth_request_ctx_t   *ctx;
+     ngx_http_auth_request_conf_t  *arcf;
++    u_char                        *remote_user;
+ 
+     arcf = ngx_http_get_module_loc_conf(r, ngx_http_shibboleth_module);
+ 
+@@ -321,6 +328,19 @@
+                                 NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+                                 "shib request authorizer copied header: \"%V: %V\"",
+                                 &hi->key, &hi->value);
++                        if (ngx_strcmp(hi->key.data, "REMOTE_USER") == 0) {
++                                ngx_log_debug1(
++                                        NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
++                                        "shib request authorizer copy REMOTE_USER header into $remote_user: \"%V\"",
++                                        &hi->value);
++                                remote_user = ngx_pnalloc(r->pool, hi->value.len);
++                                if (remote_user == NULL) {
++                                    return NGX_HTTP_INTERNAL_SERVER_ERROR;
++                                }
++                                ngx_memcpy(remote_user, hi->value.data, hi->value.len);
++                                r->headers_in.user.len = hi->value.len;
++                                r->headers_in.user.data = remote_user;
++                        }
+                     }
+                 }
+ 
+@@ -406,8 +426,8 @@
+         return NGX_ERROR;
+     }
+ 
+-    /* 
+-     * true FastCGI authorizers should always return the subrequest 
++    /*
++     * true FastCGI authorizers should always return the subrequest
+      * response body but the Nginx FastCGI handler does not support
+      * NGX_HTTP_SUBREQUEST_IN_MEMORY at present.
+      */
+@@ -694,47 +714,50 @@
+     }
+ #endif
+ 
+-    part = &r->headers_out.headers.part;
+-    h = part->elts;
+-
+-    for (i = 0; /* void */; i++) {
+-
+-        if (i >= part->nelts) {
+-            if (part->next == NULL) {
+-                break;
+-            }
++    if (!hv->multi)
++    {
++        part = &r->headers_out.headers.part;
++        h = part->elts;
+ 
+-            part = part->next;
+-            h = part->elts;
+-            i = 0;
+-        }
++        for (i = 0; /* void */; i++) {
+ 
+-        if (h[i].hash != 0
+-            && h[i].key.len == hv->key.len
+-            && ngx_strncasecmp(hv->key.data, h[i].key.data, h[i].key.len) == 0)
+-        {
++            if (i >= part->nelts) {
++                if (part->next == NULL) {
++                    break;
++                }
+ 
+-            if (value->len == 0 || matched) {
++                part = part->next;
++                h = part->elts;
++                i = 0;
++            }
+ 
+-                h[i].value.len = 0;
+-                h[i].hash = 0;
++            if (h[i].hash != 0
++                && h[i].key.len == hv->key.len
++                && ngx_strncasecmp(hv->key.data, h[i].key.data, h[i].key.len) == 0)
++            {
++
++                if (value->len == 0 || matched) {
++
++                    h[i].value.len = 0;
++                    h[i].hash = 0;
++
++                } else {
++                    h[i].value = *value;
++                    h[i].hash = hv->hash;
++                }
+ 
+-            } else {
+-                h[i].value = *value;
+-                h[i].hash = hv->hash;
+-            }
++                if (output_header) {
++                    *output_header = &h[i];
++                }
+ 
+-            if (output_header) {
+-                *output_header = &h[i];
++                /* return NGX_OK; */
++                matched = 1;
+             }
+-
+-            /* return NGX_OK; */
+-            matched = 1;
+         }
+-    }
+ 
+-    if (matched) {
+-        return NGX_OK;
++        if (matched) {
++            return NGX_OK;
++        }
+     }
+ 
+     if (no_create && value->len == 0) {
+@@ -959,6 +982,7 @@
+ 
+         hv.offset = handlers[i].offset;
+         hv.handler = handlers[i].handler;
++        hv.multi = handlers[i].multi;
+ 
+         break;
+     }
+@@ -966,6 +990,7 @@
+     if (handlers[i].name.len == 0 && handlers[i].handler) {
+         hv.offset = handlers[i].offset;
+         hv.handler = handlers[i].handler;
++        hv.multi = handlers[i].multi;
+     }
+ 
+     /* if there is no handler, skip the header (eg Content-* headers) */

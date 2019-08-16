@@ -1,0 +1,37 @@
+--- original/nginx-goodies-nginx-sticky-module-ng-08a395c66e42/ngx_http_sticky_misc.c	2016-08-09 07:37:04.000000000 +0900
++++ SOURCE/nginx-goodies-nginx-sticky-module-ng-08a395c66e42/ngx_http_sticky_misc.c	2018-09-24 11:15:39.000000000 +0900
+@@ -288,6 +288,8 @@
+ ngx_int_t ngx_http_sticky_misc_text_raw(ngx_pool_t *pool, struct sockaddr *in, ngx_str_t *digest)
+ {
+   size_t len;
++  u_char *p;
++  struct sockaddr_in *sin;
+   if (!in) {
+     return NGX_ERROR;
+   }
+@@ -319,12 +321,20 @@
+     return NGX_ERROR;
+   }
+ 
++  if (in->sa_family == AF_INET) {
++    /* do not include port number into hash string  to share route cookie between multiple services */
++    sin = (struct sockaddr_in *) in;
++    p = (u_char *) &sin->sin_addr;
++    digest->len =  ngx_snprintf(digest->data, len, "%ud.%ud.%ud.%ud",
++      p[0], p[1], p[2], p[3]) - digest->data;
++  } else {
+   /* https://bitbucket.org/nginx-goodies/nginx-sticky-module-ng/issue/1/nginx-158-api-change-for-ngx_sock_ntop */
+ #if defined(nginx_version) && nginx_version >= 1005003
+     digest->len = ngx_sock_ntop(in, sizeof(struct sockaddr_in), digest->data, len, 1);
+ #else
+     digest->len = ngx_sock_ntop(in, digest->data, len, 1);
+ #endif
++  }
+ 
+   return NGX_OK;
+ 
+@@ -359,4 +369,3 @@
+ 
+   return ngx_pfree(pool, &str);
+ }
+-
