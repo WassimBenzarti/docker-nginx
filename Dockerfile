@@ -35,6 +35,7 @@ RUN curl -L -o /tmp/nginx.tar.gz "http://nginx.org/download/nginx-${NGINX_VERSIO
   curl -L -o /tmp/nginx-http-shibboleth-${nginx_http_shibboleth_version}.tar.gz https://github.com/nginx-shib/nginx-http-shibboleth/archive/v${nginx_http_shibboleth_version}.tar.gz && \
   curl -L -o /tmp/headers-more-nginx-module-${headers_more_version}.tar.gz https://github.com/openresty/headers-more-nginx-module/archive/v${headers_more_version}.tar.gz
 
+
 # Last Commits for master branch on Feb 28, 2015
 COPY nginx_ajp_module-master.tar.gz /tmp/nginx_ajp_module-master.tar.gz
 # Latest commit 1a92c67  on 19 Jul 2017
@@ -46,7 +47,7 @@ COPY sticky.patch /tmp/sticky.patch
 ENV LUAJIT_INC /usr/include/luajit-2.1
 ENV LUAJIT_LIB /usr/lib
 
-# Reuse same cli arguments as the nginx:alpine image used to build
+# unarchive source codes
 RUN mkdir -p /usr/src
 WORKDIR /usr/src
 RUN tar -zxf /tmp/nginx.tar.gz && \
@@ -57,6 +58,7 @@ RUN tar -zxf /tmp/nginx.tar.gz && \
   tar -zxf /tmp/headers-more-nginx-module-${headers_more_version}.tar.gz && \
   tar -zxf /tmp/nginx_ajp_module-master.tar.gz && \
   tar -zxf /tmp/ngx_upstream_jdomain-master.tar.gz
+COPY ngx_upstream_resolveMK ngx_upstream_resolveMK
 
 RUN patch -p 1 < /tmp/shibboleth.patch
 RUN patch -p 1 < /tmp/sticky.patch
@@ -64,6 +66,7 @@ RUN patch -p 1 < /tmp/sticky.patch
 WORKDIR /usr/src/nginx-$NGINX_VERSION
 RUN patch -p 1 < /tmp/core.patch
 
+# Reuse same cli arguments as the nginx:alpine image used to build
 RUN CONFARGS=$(nginx -V 2>&1 | sed -n -e 's/^.*arguments: //p') && \
   sh -c "./configure --with-compat $CONFARGS \
     --add-module=/usr/src/ngx_devel_kit-${ngx_devel_kit_version} \
@@ -72,7 +75,8 @@ RUN CONFARGS=$(nginx -V 2>&1 | sed -n -e 's/^.*arguments: //p') && \
     --add-module=/usr/src/ngx_upstream_jdomain-master \
     --add-module=/usr/src/nginx-http-shibboleth-${nginx_http_shibboleth_version} \
     --add-module=/usr/src/headers-more-nginx-module-${headers_more_version} \
-    --add-module=/usr/src/nginx-goodies-nginx-sticky-module-ng-${sticky_module_version_internal} " && \
+    --add-module=/usr/src/nginx-goodies-nginx-sticky-module-ng-${sticky_module_version_internal} \
+    --add-module=/usr/src/ngx_upstream_resolveMK " && \
   make && make install
 
 FROM nginx:alpine
