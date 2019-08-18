@@ -83,5 +83,6 @@ FROM nginx:alpine
 RUN apk add --no-cache luajit
 # Extract the new nginx
 COPY --from=builder /usr/sbin/nginx /usr/sbin/nginx
+COPY nginx.conf /etc/nginx/nginx.conf
 EXPOSE 80 443
 CMD ["nginx", "-g", "daemon off;"]
