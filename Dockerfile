@@ -24,7 +24,8 @@ RUN apk add --no-cache --virtual .build-deps \
   gnupg \
   libxslt-dev \
   gd-dev \
-  geoip-dev
+  geoip-dev \
+  build-base
 
 # Download sources
 RUN curl -L -o /tmp/nginx.tar.gz "http://nginx.org/download/nginx-${NGINX_VERSION}.tar.gz" && \
